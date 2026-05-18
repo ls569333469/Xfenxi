@@ -191,15 +191,19 @@ function isLocalRequest(request) {
 }
 
 function openExternalUrl(url) {
-  if (process.platform === 'win32') {
-    spawn('cmd.exe', ['/c', 'start', '""', url], {
-      detached: true,
-      stdio: 'ignore'
-    }).unref();
-    return;
-  }
-  const command = process.platform === 'darwin' ? 'open' : 'xdg-open';
-  spawn(command, [url], { detached: true, stdio: 'ignore' }).unref();
+  const child = process.platform === 'win32'
+    ? spawn('C:\\Windows\\System32\\cmd.exe', ['/c', 'start', '""', url], {
+        detached: true,
+        stdio: 'ignore'
+      })
+    : spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], {
+        detached: true,
+        stdio: 'ignore'
+      });
+  child.on('error', (error) => {
+    console.error(`Failed to open external URL: ${error.message}`);
+  });
+  child.unref();
 }
 
 server.listen(config.port, () => {
