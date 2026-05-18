@@ -639,7 +639,7 @@ function renderEvidence(items) {
 function xLink(handle) {
   const clean = String(handle || '').trim().replace(/^@/, '');
   if (!clean) return '-';
-  return `<a href="https://x.com/${escapeAttr(clean)}" target="_blank" rel="noreferrer">@${escapeHtml(clean)}</a>`;
+  return `<a href="https://x.com/${escapeAttr(clean)}" rel="noreferrer" title="打开 X 账号 @${escapeAttr(clean)}">@${escapeHtml(clean)}</a>`;
 }
 
 function extractHandle(input) {
