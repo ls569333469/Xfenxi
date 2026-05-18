@@ -60,6 +60,7 @@ function bindEvents() {
   els.rawInput.addEventListener('input', renderDuplicateNotice);
   els.refreshDashboard.addEventListener('click', refreshAll);
   els.refreshHistory.addEventListener('click', refreshAll);
+  document.addEventListener('click', openXInDefaultBrowser);
 }
 
 function showView(view) {
@@ -418,9 +419,6 @@ function historyItem(batch) {
 }
 
 function bindOpenButtons(root) {
-  root.querySelectorAll('[data-open-x]').forEach((link) => {
-    link.addEventListener('click', openXInDefaultBrowser);
-  });
   root.querySelectorAll('[data-open-batch]').forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await getJson(`/api/batches/${button.dataset.openBatch}`);
@@ -646,8 +644,11 @@ function xLink(handle) {
 }
 
 async function openXInDefaultBrowser(event) {
+  const link = event.target.closest?.('[data-open-x]');
+  if (!link) return;
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
-  const handle = event.currentTarget.dataset.openX;
+  const handle = link.dataset.openX;
   try {
     const response = await fetch('/api/open-x', {
       method: 'POST',
@@ -656,7 +657,7 @@ async function openXInDefaultBrowser(event) {
     });
     if (!response.ok) throw new Error('open failed');
   } catch {
-    window.location.href = event.currentTarget.href;
+    window.location.href = link.href;
   }
 }
 

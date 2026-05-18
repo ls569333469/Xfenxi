@@ -192,7 +192,7 @@ function isLocalRequest(request) {
 
 function openExternalUrl(url) {
   if (process.platform === 'win32') {
-    spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
+    spawn('cmd.exe', ['/c', 'start', '""', url], {
       detached: true,
       stdio: 'ignore'
     }).unref();
