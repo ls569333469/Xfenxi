@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>X 项目机会分析</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">X</div>
+          <div>
+            <h1>机会分析</h1>
+            <p>发币 / CA / TGE</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="analyze">批量分析</button>
+          <button class="nav-item" data-view="dashboard">总览</button>
+          <button class="nav-item" data-view="history">历史报告</button>
+        </nav>
+        <div class="runtime" id="runtime"></div>
+      </aside>
+
+      <main class="main">
+        <section id="view-analyze" class="view active">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">批量分析</p>
+              <h2>批量 X 账号机会分析</h2>
+            </div>
+            <button id="sampleButton" class="secondary-button">填入示例</button>
+          </div>
+
+          <div class="input-panel">
+            <div class="field-row">
+              <label>
+                <span>批次名称</span>
+                <input id="batchName" type="text" placeholder="例如：本周 TGE 观察">
+              </label>
+              <label>
+                <span>汇总模型</span>
+                <select id="finalizer">
+                  <option value="gpt">GPT</option>
+                  <option value="claude">Claude</option>
+                </select>
+              </label>
+              <label>
+                <span>审计阶段</span>
+                <select id="auditStage">
+                  <option value="fast">快速</option>
+                  <option value="deep">深度</option>
+                  <option value="verify">验证</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="textarea-label">
+              <span>账号列表</span>
+              <textarea id="rawInput" spellcheck="false" placeholder="@project&#10;@project | 项目名称 | https://project.xyz | 所属生态 | 备注"></textarea>
+            </label>
+            <div id="duplicateNotice" class="duplicate-notice" hidden></div>
+
+            <div class="action-row">
+              <button id="startButton" class="primary-button">开始分析</button>
+              <button id="forceStartButton" class="secondary-button" hidden>仍然重新分析全部</button>
+              <p id="inputHint">每行一个 X 账号，最多 20 个。支持补充项目名、官网、链名和备注。</p>
+            </div>
+          </div>
+
+          <div id="activeBatch"></div>
+        </section>
+
+        <section id="view-dashboard" class="view">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">总览</p>
+              <h2>机会总览</h2>
+            </div>
+            <button id="refreshDashboard" class="secondary-button">刷新</button>
+          </div>
+          <div id="statsGrid" class="stats-grid"></div>
+          <div id="projectOverview" class="section-band"></div>
+        </section>
+
+        <section id="view-history" class="view">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">历史</p>
+              <h2>历史报告</h2>
+            </div>
+            <button id="refreshHistory" class="secondary-button">刷新</button>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

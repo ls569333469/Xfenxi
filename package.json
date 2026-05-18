@@ -1,0 +1,14 @@
+{
+  "name": "x-token-opportunity-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "mock": "node --no-warnings src/server.js --mock",
+    "check": "node --check src/server.js && node --check src/analyzer.js && node --check src/models.js && node --check src/db.js && node --check src/markdown.js && node --check src/config.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
