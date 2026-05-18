@@ -418,6 +418,9 @@ function historyItem(batch) {
 }
 
 function bindOpenButtons(root) {
+  root.querySelectorAll('[data-open-x]').forEach((link) => {
+    link.addEventListener('click', openXInDefaultBrowser);
+  });
   root.querySelectorAll('[data-open-batch]').forEach((button) => {
     button.addEventListener('click', async () => {
       const result = await getJson(`/api/batches/${button.dataset.openBatch}`);
@@ -639,7 +642,22 @@ function renderEvidence(items) {
 function xLink(handle) {
   const clean = String(handle || '').trim().replace(/^@/, '');
   if (!clean) return '-';
-  return `<a href="https://x.com/${escapeAttr(clean)}" rel="noreferrer" title="打开 X 账号 @${escapeAttr(clean)}">@${escapeHtml(clean)}</a>`;
+  return `<a href="https://x.com/${escapeAttr(clean)}" rel="noreferrer" data-open-x="${escapeAttr(clean)}" title="用默认浏览器打开 X 账号 @${escapeAttr(clean)}">@${escapeHtml(clean)}</a>`;
+}
+
+async function openXInDefaultBrowser(event) {
+  event.preventDefault();
+  const handle = event.currentTarget.dataset.openX;
+  try {
+    const response = await fetch('/api/open-x', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle })
+    });
+    if (!response.ok) throw new Error('open failed');
+  } catch {
+    window.location.href = event.currentTarget.href;
+  }
 }
 
 function extractHandle(input) {

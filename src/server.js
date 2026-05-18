@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { URL } from 'node:url';
 import { config, publicConfig } from './config.js';
 import { getBatch, listBatches, listProjects, recoverInterruptedRuns, stats } from './db.js';
@@ -55,6 +56,23 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'GET' && pathname === '/api/projects') {
     sendJson(response, 200, { projects: listProjects() });
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/open-x') {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: 'Only local requests can open external links' });
+      return;
+    }
+    const body = await readJson(request);
+    const handle = normalizeXHandle(body.handle);
+    if (!handle) {
+      sendJson(response, 400, { error: 'Invalid X handle' });
+      return;
+    }
+    const url = `https://x.com/${handle}`;
+    openExternalUrl(url);
+    sendJson(response, 200, { ok: true, url });
     return;
   }
 
@@ -159,6 +177,29 @@ function sendText(response, status, text) {
     'Content-Type': 'text/plain; charset=utf-8'
   });
   response.end(text);
+}
+
+function normalizeXHandle(value) {
+  const clean = String(value || '').trim().replace(/^@/, '');
+  const match = clean.match(/^[A-Za-z0-9_]{1,20}$/);
+  return match ? clean : '';
+}
+
+function isLocalRequest(request) {
+  const address = request.socket.remoteAddress || '';
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
+}
+
+function openExternalUrl(url) {
+  if (process.platform === 'win32') {
+    spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], {
+      detached: true,
+      stdio: 'ignore'
+    }).unref();
+    return;
+  }
+  const command = process.platform === 'darwin' ? 'open' : 'xdg-open';
+  spawn(command, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
 server.listen(config.port, () => {
