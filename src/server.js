@@ -4,7 +4,14 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { URL } from 'node:url';
 import { config, publicConfig } from './config.js';
-import { getBatch, listBatches, listProjects, recoverInterruptedRuns, stats } from './db.js';
+import {
+  getBatch,
+  listBatches,
+  listProjects,
+  recoverInterruptedRuns,
+  setProjectVisibilityByHandle,
+  stats
+} from './db.js';
 import { refinalizeBatch, startAnalysis } from './analyzer.js';
 
 const publicDir = path.join(process.cwd(), 'public');
@@ -56,6 +63,16 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'GET' && pathname === '/api/projects') {
     sendJson(response, 200, { projects: listProjects() });
+    return;
+  }
+
+  const visibilityMatch = pathname.match(/^\/api\/projects\/([^/]+)\/visibility$/);
+  if (request.method === 'POST' && visibilityMatch) {
+    const body = await readJson(request);
+    const handle = decodeURIComponent(visibilityMatch[1]);
+    const visibility = body.visibility === 'hidden' ? 'hidden' : 'active';
+    const result = setProjectVisibilityByHandle(handle, visibility, body.reason || '');
+    sendJson(response, 200, { ok: true, ...result });
     return;
   }
 

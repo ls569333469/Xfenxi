@@ -21,6 +21,11 @@ function addressList(items) {
     .join('\n');
 }
 
+function confirmedCas(final) {
+  if (Array.isArray(final.confirmed_cas) && final.confirmed_cas.length) return final.confirmed_cas;
+  return final.ca ? [{ address: final.ca, confidence: final.ca_confidence }] : [];
+}
+
 function evidenceTable(evidence) {
   if (!Array.isArray(evidence) || evidence.length === 0) {
     return '| 结论 | 来源 | 置信度 |\n|---|---|---|\n| 暂无 | - | - |';
@@ -54,7 +59,8 @@ export function projectMarkdown(project) {
 ${text(final.project_intro, '暂无项目简介')}
 
 #### 地址识别
-- 确认 CA：${text(final.ca, '未确认')}
+- 确认 CA：
+${addressList(confirmedCas(final))}
 - 候选 CA：
 ${addressList(final.candidate_cas)}
 - 钱包/金库地址：

@@ -6,7 +6,8 @@ const state = {
   polling: null,
   overviewFilters: {
     token: 'all',
-    ca: 'all'
+    ca: 'all',
+    visibility: 'active'
   },
   batchFilters: {
     token: 'all',
@@ -168,6 +169,7 @@ function renderStats(stats) {
   const items = [
     ['历史批次', stats.total_batches || 0],
     ['项目总数', stats.total_projects || 0],
+    ['已隐藏', stats.hidden_projects || 0],
     ['高优先级', stats.high_priority || 0],
     ['TGE 观察', stats.tge_watch || 0]
   ];
@@ -193,6 +195,7 @@ function renderProjectOverview() {
         <h3>项目汇总</h3>
         <p>每个 X 账号仅显示最新有效记录，历史批次仍在“历史报告”中保留。</p>
       </div>
+      ${visibilityPanel('overview', state.overviewFilters)}
       ${filterPanel('overview', state.overviewFilters)}
     </div>
     <div class="table-wrap">
@@ -219,13 +222,15 @@ function renderProjectOverview() {
       </table>
     </div>
   `;
+  decorateVisibilityButtons(els.projectOverview);
   bindOpenButtons(els.projectOverview);
   bindFilterPanel(els.projectOverview, 'overview');
 }
 
 function projectOverviewRow(project) {
+  const hidden = isHiddenProject(project);
   return `
-    <tr>
+    <tr class="${hidden ? 'is-hidden' : ''}">
       <td>${escapeHtml(project.project_name || project.x_handle)}</td>
       <td class="mono">${xLink(project.x_handle)}</td>
       <td class="wide-cell">${escapeHtml(project.project_intro || project.summary || '-')}</td>
@@ -247,6 +252,10 @@ function projectOverviewRow(project) {
 
 function filteredOverviewProjects() {
   return applyProjectFilters(state.projects, state.overviewFilters);
+}
+
+function isHiddenProject(project) {
+  return (project.visibility || 'active') === 'hidden';
 }
 
 function tokenBadge(project) {
@@ -323,6 +332,20 @@ function filterPanel(scope, filters) {
   `;
 }
 
+function visibilityPanel(scope, filters) {
+  if (scope !== 'overview') return '';
+  return `
+    <div class="filter-panel" data-filter-scope="${scope}">
+      <div class="filter-group">
+        <span>显示</span>
+        ${filterButton(scope, 'visibility', 'active', '活跃', filters.visibility)}
+        ${filterButton(scope, 'visibility', 'hidden', '已隐藏', filters.visibility)}
+        ${filterButton(scope, 'visibility', 'all', '全部', filters.visibility)}
+      </div>
+    </div>
+  `;
+}
+
 function filterButton(scope, type, value, label, activeValue) {
   return `<button class="filter-button ${activeValue === value ? 'active' : ''}" data-filter-scope="${scope}" data-filter-type="${type}" data-filter-value="${value}">${label}</button>`;
 }
@@ -340,9 +363,14 @@ function bindFilterPanel(root, scope) {
 
 function applyProjectFilters(projects, filters) {
   return projects.filter((project) => {
+    const visibility = filters.visibility || 'all';
+    const hidden = isHiddenProject(project);
+    const visibilityMatch =
+      visibility === 'all' ||
+      (visibility === 'hidden' ? hidden : !hidden);
     const tokenMatch = filters.token === 'all' || tokenCategory(project) === filters.token;
     const caMatch = filters.ca === 'all' || caCategory(project) === filters.ca;
-    return tokenMatch && caMatch;
+    return visibilityMatch && tokenMatch && caMatch;
   });
 }
 
@@ -359,20 +387,25 @@ function renderDuplicateNotice() {
   if (!els.duplicateNotice) return;
   const rows = parseInputRows(els.rawInput.value);
   const duplicates = rows.filter((row) => projectHandleSet().has(row.key));
-  if (!duplicates.length) {
+  const hiddenMatches = rows.filter(
+    (row) => !projectHandleSet().has(row.key) && hiddenProjectHandleSet().has(row.key)
+  );
+  if (!duplicates.length && !hiddenMatches.length) {
     els.duplicateNotice.hidden = true;
     els.forceStartButton.hidden = true;
     els.startButton.textContent = '开始分析';
     return;
   }
   const uniqueDuplicates = [...new Map(duplicates.map((row) => [row.key, row.handle])).values()];
+  const uniqueHiddenMatches = [...new Map(hiddenMatches.map((row) => [row.key, row.handle])).values()];
   els.duplicateNotice.hidden = false;
-  els.forceStartButton.hidden = false;
-  els.startButton.textContent = '跳过重复并分析';
+  els.forceStartButton.hidden = !uniqueDuplicates.length;
+  els.startButton.textContent = uniqueDuplicates.length ? '跳过重复并分析' : '开始分析';
   els.duplicateNotice.innerHTML = `
     <strong>发现已存在项目</strong>
-    <p>以下账号已在项目汇总中存在：${uniqueDuplicates.map((handle) => `<span class="mono">${escapeHtml(handle)}</span>`).join('、')}</p>
-    <p>默认会跳过重复账号，只分析新账号；如需更新旧数据，请点击“仍然重新分析全部”。</p>
+    ${uniqueDuplicates.length ? `<p>以下账号已在项目汇总中存在：${uniqueDuplicates.map((handle) => `<span class="mono">${escapeHtml(handle)}</span>`).join('、')}</p>` : ''}
+    ${uniqueDuplicates.length ? '<p>默认会跳过重复账号，只分析新账号；如需更新旧数据，请点击“仍然重新分析全部”。</p>' : ''}
+    ${uniqueHiddenMatches.length ? `<p>以下账号当前已隐藏，本次会作为新任务重新分析并回到活跃视图：${uniqueHiddenMatches.map((handle) => `<span class="mono">${escapeHtml(handle)}</span>`).join('、')}</p>` : ''}
   `;
 }
 
@@ -388,7 +421,21 @@ function removeDuplicateInputRows(rawInput) {
 }
 
 function projectHandleSet() {
-  return new Set(state.projects.map((project) => normalizeHandle(project.x_handle)).filter(Boolean));
+  return new Set(
+    state.projects
+      .filter((project) => !isHiddenProject(project))
+      .map((project) => normalizeHandle(project.x_handle))
+      .filter(Boolean)
+  );
+}
+
+function hiddenProjectHandleSet() {
+  return new Set(
+    state.projects
+      .filter(isHiddenProject)
+      .map((project) => normalizeHandle(project.x_handle))
+      .filter(Boolean)
+  );
 }
 
 function parseInputRows(rawInput) {
@@ -440,6 +487,39 @@ function bindOpenButtons(root) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       if (isActiveStatus(state.currentBatch.status)) startPolling(state.currentBatch.id);
+    });
+  });
+}
+
+function decorateVisibilityButtons(root) {
+  const projects = filteredOverviewProjects();
+  const rows = root.querySelectorAll('tbody tr');
+  rows.forEach((row, index) => {
+    const project = projects[index];
+    if (!project) return;
+    const actionCell = row.querySelector('td:last-child');
+    if (!actionCell || actionCell.querySelector('[data-toggle-visibility]')) return;
+    const button = document.createElement('button');
+    button.className = 'table-button';
+    button.dataset.toggleVisibility = project.x_handle;
+    button.dataset.visibility = isHiddenProject(project) ? 'active' : 'hidden';
+    button.textContent = isHiddenProject(project) ? '恢复' : '隐藏';
+    actionCell.appendChild(button);
+    if (isHiddenProject(project)) {
+      const note = document.createElement('div');
+      note.className = 'muted small-text';
+      note.textContent = '已隐藏';
+      actionCell.appendChild(note);
+      row.classList.add('is-hidden');
+    }
+  });
+  root.querySelectorAll('[data-toggle-visibility]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      await postJson(`/api/projects/${encodeURIComponent(button.dataset.toggleVisibility)}/visibility`, {
+        visibility: button.dataset.visibility
+      });
+      await refreshAll();
     });
   });
 }
@@ -566,6 +646,7 @@ function renderFinal(final) {
 }
 
 function renderAddressBlocks(project) {
+  const confirmedCas = normalizeAddressList(project.final?.confirmed_cas || project.grok_raw?.confirmed_cas);
   const candidateCas = normalizeAddressList(project.final?.candidate_cas || project.grok_raw?.candidate_cas);
   const wallets = normalizeAddressList(project.final?.wallet_addresses || project.grok_raw?.wallet_addresses);
   const confirmed = project.ca || project.final?.ca || '';
@@ -574,7 +655,7 @@ function renderAddressBlocks(project) {
     <div class="address-grid">
       <div>
         <strong>确认 CA</strong>
-        <p class="mono">${escapeHtml(confirmed || '未确认')}</p>
+        ${confirmedCas.length ? renderAddressList(confirmedCas) : `<p class="mono">${escapeHtml(confirmed || '未确认')}</p>`}
       </div>
       <div>
         <strong>候选 CA</strong>

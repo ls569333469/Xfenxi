@@ -130,7 +130,7 @@ async function runBatch(id) {
         status: 'grok_done',
         grok_raw: grok,
         token_status: textValue(grok.token_status),
-        ca: grok.confirmed_ca ?? '',
+        ca: primaryCaFrom(grok),
         ca_confidence: textValue(grok.ca_confidence),
         tge_status: textValue(grok.tge_status),
         tge_time: textValue(grok.tge_time),
@@ -257,7 +257,8 @@ function fallbackFinal(projects, error) {
       score,
       grade: gradeFromScore(score),
       token_status: textValue(grok.token_status) || '信息不足，需人工确认',
-      ca: textValue(grok.confirmed_ca),
+      ca: primaryCaFrom(grok),
+      confirmed_cas: normalizeAddressList(grok.confirmed_cas),
       candidate_cas: normalizeAddressList(grok.candidate_cas),
       wallet_addresses: normalizeAddressList(grok.wallet_addresses),
       ca_confidence: textValue(grok.ca_confidence) || '无',
@@ -295,6 +296,7 @@ function compactGrok(grok) {
     project_intro: grok.project_intro,
     token_status: grok.token_status,
     confirmed_ca: grok.confirmed_ca,
+    confirmed_cas: grok.confirmed_cas,
     candidate_cas: grok.candidate_cas,
     wallet_addresses: grok.wallet_addresses,
     ca_confidence: grok.ca_confidence,
@@ -317,6 +319,7 @@ function compactAuditRounds(rounds) {
     stage: round.stage,
     token_status: round.result?.token_status,
     confirmed_ca: round.result?.confirmed_ca,
+    confirmed_cas: round.result?.confirmed_cas,
     candidate_cas: round.result?.candidate_cas,
     wallet_addresses: round.result?.wallet_addresses,
     ca_confidence: round.result?.ca_confidence,
@@ -373,7 +376,8 @@ function normalizeFinalProject(finalProject, sourceProject) {
       grok.project_intro ||
       inferProjectIntro(sourceProject, grok),
     token_status: textValue(finalProject?.token_status || grok.token_status) || '信息冲突，需人工确认',
-    ca: textValue(finalProject?.ca || grok.confirmed_ca),
+    ca: textValue(finalProject?.ca || primaryCaFrom(grok)),
+    confirmed_cas: normalizeAddressList(finalProject?.confirmed_cas || grok.confirmed_cas),
     candidate_cas: normalizeAddressList(finalProject?.candidate_cas || grok.candidate_cas),
     wallet_addresses: normalizeAddressList(finalProject?.wallet_addresses || grok.wallet_addresses),
     ca_confidence: textValue(finalProject?.ca_confidence || grok.ca_confidence) || '无',
@@ -403,6 +407,11 @@ function normalizeAddressList(value) {
   return [value];
 }
 
+function primaryCaFrom(value) {
+  const confirmed = normalizeAddressList(value?.confirmed_cas);
+  return confirmed[0]?.address || textValue(value?.confirmed_ca);
+}
+
 function normalizeList(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -422,7 +431,7 @@ function inferProjectIntro(sourceProject, grok) {
 
 function heuristicScore(grok) {
   let score = 35;
-  if (grok.confirmed_ca) score += 25;
+  if (primaryCaFrom(grok)) score += 25;
   if (['明确TGE日期', '明确月份/季度'].includes(grok.tge_status)) score += 25;
   if (grok.airdrop_status === '有明确机会') score += 10;
   if (grok.airdrop_status === '有暗示') score += 6;

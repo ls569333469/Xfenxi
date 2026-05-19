@@ -256,7 +256,7 @@ textarea {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -385,6 +385,11 @@ th {
   color: var(--muted);
   background: #f9fbfa;
   font-weight: 900;
+}
+
+tr.is-hidden {
+  opacity: 0.62;
+  background: #f6f8f7;
 }
 
 td.mono {

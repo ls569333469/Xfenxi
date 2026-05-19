@@ -49,6 +49,9 @@ db.exec(`
     final_json TEXT,
     markdown TEXT,
     error TEXT,
+    visibility TEXT NOT NULL DEFAULT 'active',
+    hidden_at TEXT,
+    hidden_reason TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -56,6 +59,24 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_projects_batch_id ON projects(batch_id);
   CREATE INDEX IF NOT EXISTS idx_batches_created_at ON batches(created_at DESC);
 `);
+
+ensureProjectVisibilityColumns();
+
+function ensureProjectVisibilityColumns() {
+  const columns = new Set(
+    db.prepare('PRAGMA table_info(projects)').all().map((column) => column.name)
+  );
+  if (!columns.has('visibility')) {
+    db.exec("ALTER TABLE projects ADD COLUMN visibility TEXT NOT NULL DEFAULT 'active'");
+  }
+  if (!columns.has('hidden_at')) {
+    db.exec('ALTER TABLE projects ADD COLUMN hidden_at TEXT');
+  }
+  if (!columns.has('hidden_reason')) {
+    db.exec('ALTER TABLE projects ADD COLUMN hidden_reason TEXT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_projects_visibility ON projects(visibility)');
+}
 
 function now() {
   return new Date().toISOString();
@@ -113,6 +134,7 @@ export function createBatch({ id, name, projects, apiCallsPlanned }) {
   `);
 
   for (const project of projects) {
+    setProjectVisibilityByHandle(project.x_handle, 'active');
     insertProject.run(
       project.id,
       id,
@@ -167,7 +189,10 @@ export function updateProject(id, updates) {
     'grok_raw',
     'final_json',
     'markdown',
-    'error'
+    'error',
+    'visibility',
+    'hidden_at',
+    'hidden_reason'
   ];
   const entries = Object.entries(updates).filter(([key]) => allowed.includes(key));
   if (!entries.length) return;
@@ -224,7 +249,23 @@ export function listProjects({ limit = 500 } = {}) {
       wallet_addresses: normalizeAddressList(final?.wallet_addresses || grok?.wallet_addresses)
     };
   });
-  return uniqueLatestProjects(rows);
+  return uniqueLatestProjects(rows, { max: 200 });
+}
+
+export function setProjectVisibilityByHandle(handle, visibility, reason = '') {
+  const key = normalizeHandle(handle);
+  if (!key) return { changed: 0 };
+  const hiddenAt = visibility === 'hidden' ? now() : null;
+  const hiddenReason = visibility === 'hidden' ? String(reason ?? '').trim() : '';
+  const result = db.prepare(`
+    UPDATE projects
+    SET visibility = ?,
+        hidden_at = ?,
+        hidden_reason = ?,
+        updated_at = ?
+    WHERE lower(replace(x_handle, '@', '')) = ?
+  `).run(visibility, hiddenAt, hiddenReason, now(), key);
+  return { changed: result.changes ?? 0 };
 }
 
 export function getBatch(id) {
@@ -247,7 +288,7 @@ function normalizeAddressList(value) {
   return [value];
 }
 
-function uniqueLatestProjects(projects) {
+function uniqueLatestProjects(projects, { max = Infinity } = {}) {
   const groups = new Map();
   for (const project of projects) {
     if (isMockProject(project)) continue;
@@ -265,11 +306,12 @@ function uniqueLatestProjects(projects) {
       return {
         ...selected,
         duplicate_count: items.length,
-        hidden_duplicate_count: Math.max(0, items.length - 1)
+        hidden_duplicate_count: Math.max(0, items.length - 1),
+        visibility: selected.visibility || 'active'
       };
     })
     .sort(compareProjectFreshness)
-    .slice(0, 200);
+    .slice(0, max);
 }
 
 function normalizeHandle(handle) {
@@ -387,7 +429,8 @@ function repairFailedBatchCounts(stamp = now()) {
 }
 
 export function stats() {
-  const projects = listProjects({ limit: 1000 });
+  const projects = latestProjectsForStats();
+  const activeProjects = projects.filter((project) => (project.visibility || 'active') !== 'hidden');
   const batchStats = db.prepare(`
     SELECT
       COUNT(*) AS total_batches,
@@ -398,13 +441,44 @@ export function stats() {
 
   return {
     ...batchStats,
-    total_projects: projects.length,
-    high_priority: projects.filter((project) => ['S', 'A'].includes(project.grade)).length,
-    token_issued: projects.filter((project) => project.ca).length,
-    tge_watch: projects.filter((project) =>
+    total_projects: activeProjects.length,
+    hidden_projects: projects.length - activeProjects.length,
+    high_priority: activeProjects.filter((project) => ['S', 'A'].includes(project.grade)).length,
+    token_issued: activeProjects.filter((project) => project.ca).length,
+    tge_watch: activeProjects.filter((project) =>
       project.tge_status &&
       !String(project.tge_status).includes('暂无') &&
       !String(project.tge_status).includes('无可靠')
     ).length
   };
+}
+
+function latestProjectsForStats() {
+  const rows = db.prepare(`
+    SELECT
+      p.*,
+      b.name AS batch_name,
+      b.created_at AS batch_created_at,
+      b.status AS batch_status
+    FROM projects p
+    JOIN batches b ON b.id = p.batch_id
+    ORDER BY p.updated_at DESC
+  `).all().map((row) => {
+    const grok = parseJson(row.grok_raw, null);
+    const final = parseJson(row.final_json, null);
+    return {
+      ...row,
+      grok_raw: grok,
+      final,
+      project_intro:
+        final?.project_intro ||
+        grok?.project_intro ||
+        final?.summary ||
+        row.summary ||
+        '',
+      candidate_cas: normalizeAddressList(final?.candidate_cas || grok?.candidate_cas),
+      wallet_addresses: normalizeAddressList(final?.wallet_addresses || grok?.wallet_addresses)
+    };
+  });
+  return uniqueLatestProjects(rows);
 }
