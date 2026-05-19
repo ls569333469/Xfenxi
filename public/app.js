@@ -646,9 +646,9 @@ function renderFinal(final) {
 }
 
 function renderAddressBlocks(project) {
-  const confirmedCas = normalizeAddressList(project.final?.confirmed_cas || project.grok_raw?.confirmed_cas);
-  const candidateCas = normalizeAddressList(project.final?.candidate_cas || project.grok_raw?.candidate_cas);
-  const wallets = normalizeAddressList(project.final?.wallet_addresses || project.grok_raw?.wallet_addresses);
+  const confirmedCas = firstNonEmptyAddressList(project.final?.confirmed_cas, project.grok_raw?.confirmed_cas);
+  const candidateCas = firstNonEmptyAddressList(project.final?.candidate_cas, project.grok_raw?.candidate_cas);
+  const wallets = firstNonEmptyAddressList(project.final?.wallet_addresses, project.grok_raw?.wallet_addresses);
   const confirmed = project.ca || project.final?.ca || '';
   return `
     <h4>地址识别</h4>
@@ -670,10 +670,12 @@ function renderAddressBlocks(project) {
 }
 
 function addressSummary(project) {
-  const candidateCount = normalizeAddressList(project.candidate_cas || project.final?.candidate_cas || project.grok_raw?.candidate_cas).length;
-  const walletCount = normalizeAddressList(project.wallet_addresses || project.final?.wallet_addresses || project.grok_raw?.wallet_addresses).length;
-  if (!candidateCount && !walletCount) return '<span class="muted">暂无</span>';
+  const confirmedCount = firstNonEmptyAddressList(project.confirmed_cas, project.final?.confirmed_cas, project.grok_raw?.confirmed_cas).length;
+  const candidateCount = firstNonEmptyAddressList(project.candidate_cas, project.final?.candidate_cas, project.grok_raw?.candidate_cas).length;
+  const walletCount = firstNonEmptyAddressList(project.wallet_addresses, project.final?.wallet_addresses, project.grok_raw?.wallet_addresses).length;
+  if (confirmedCount <= 1 && !candidateCount && !walletCount) return '<span class="muted">暂无</span>';
   return [
+    confirmedCount > 1 ? `确认 ${confirmedCount}` : '',
     candidateCount ? `候选 ${candidateCount}` : '',
     walletCount ? `钱包 ${walletCount}` : ''
   ].filter(Boolean).map(escapeHtml).join('<br>');
@@ -771,6 +773,14 @@ function normalizeAddressList(value) {
   if (!value) return [];
   if (typeof value === 'string') return value.trim() ? [{ address: value.trim() }] : [];
   return [value];
+}
+
+function firstNonEmptyAddressList(...values) {
+  for (const value of values) {
+    const list = normalizeAddressList(value);
+    if (list.length) return list;
+  }
+  return [];
 }
 
 function renderError(message) {

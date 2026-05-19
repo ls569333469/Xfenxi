@@ -203,7 +203,10 @@ function mergeVerifiedCas(result, verification) {
     confirmedKeys.add(key);
   }
 
-  const candidate_cas = uniqueCaList(result.candidate_cas).filter((item) => !confirmedKeys.has(caKey(item.address)));
+  const candidate_cas = uniqueCaList([
+    ...(result.candidate_cas ?? []),
+    ...(verification?.candidate_cas ?? [])
+  ]).filter((item) => !confirmedKeys.has(caKey(item.address)));
 
   return {
     ...result,
@@ -217,6 +220,93 @@ function mergeVerifiedCas(result, verification) {
 
 function shouldVerifyCandidateCas(result) {
   return normalizeCaList(result.candidate_cas).some((item) => item.address && item.address.length >= 32);
+}
+
+function shouldSearchAssociatedCas(result) {
+  if (primaryCaFrom(result) || normalizeCaList(result?.candidate_cas).length) return false;
+  const evidenceText = [
+    result?.token_status,
+    result?.notes,
+    result?.risk_flags,
+    result?.recent_developments,
+    result?.raw_text,
+    ...(Array.isArray(result?.evidence)
+      ? result.evidence.map((item) => [item.claim, item.quote_or_summary].filter(Boolean).join(' '))
+      : [])
+  ].filter(Boolean).join('\n').toLowerCase();
+
+  return [
+    'claim fees',
+    'claim the fees',
+    'fee recipient',
+    'reward owner',
+    'reward ownership',
+    'pump.fun',
+    'pumpfun',
+    'community token',
+    'bankr',
+    'bankrbot',
+    'clanker'
+  ].some((signal) => evidenceText.includes(signal));
+}
+
+async function searchAssociatedCasWithGrok({ handle, project, result, baseUrl }) {
+  const prompt = `
+You are doing a second-pass search for associated community or launchpad token CAs.
+
+The first pass found no CA, but it found fee/community-token style evidence. Do not
+stop at "the account says they do not create tokens". Search whether there are
+community-created, launchpad-created, fee-recipient, reward-owner, or project-linked
+tokens associated with the account/project.
+
+Project input:
+- X handle: @${handle}
+- Project name: ${project.project_name || result?.project_name || 'unknown'}
+- Website: ${project.website || 'unknown'}
+- Chain: ${project.chain || 'unknown'}
+- Notes: ${project.notes || 'none'}
+
+First-pass signals:
+- Token status: ${Array.isArray(result?.token_status) ? result.token_status.join('; ') : result?.token_status || 'unknown'}
+- Notes: ${result?.notes || 'none'}
+- Evidence summaries:
+${Array.isArray(result?.evidence) ? result.evidence.map((item) => `  - ${item.claim || ''} ${item.quote_or_summary || ''} ${item.source_url || ''}`.trim()).join('\n') : '  - none'}
+
+Search strategy:
+- Search @${handle}, ${handle}, project name, ticker-like names, and profile-linked project names.
+- Search exact phrases: "claim fees", "claim the fees", "fee 100% to", "fees will flow to",
+  "reward owner", "reward ownership", "community token", "CA", "contract", "launched", "deployed".
+- Search launchpad and bot posts from bankrbot, Bankr, Clanker, clanker_world, pump.fun,
+  Zora coins, Virtuals, daos.fun, fjord, sunpump, four.meme, and moonshot.
+- Search replies and quote tweets where third parties mention @${handle} with a token address.
+
+Return STRICT JSON only:
+{
+  "confirmed_cas": [{"address":"string","chain":"string","ticker":"string","launchpad":"bankr/clanker/pump/zora/other/unknown","attribution_source":"author/launchpad/community/fee-recipient/other","source_url":"string","confidence":"high/medium/low"}],
+  "candidate_cas": [{"address":"string","chain":"string","ticker":"string","source_url":"string","reason":"string","confidence":"high/medium/low"}],
+  "evidence": [{"claim":"string","source_url":"string","quote_or_summary":"string","confidence":"high/medium/low"}],
+  "notes": "string"
+}
+
+Rules:
+- If @${handle} posts a token address as a community token supporting the project, put it in confirmed_cas.
+- If a launchpad/bot post attributes a token, fee stream, reward owner, or deploy to @${handle} or the project, put the exact full token address in confirmed_cas.
+- If the address is truncated, the attribution is only rumor, or the role is unclear, put it in candidate_cas.
+- Preserve attribution. A community or fee-recipient token can be confirmed associated even when it is not author-created or official.
+- If no reliable address is found, return empty arrays and explain what you searched.
+`.trim();
+
+  const response = await postJson(`${baseUrl}/responses`, config.xai.apiKey, {
+    model: config.xai.model,
+    input: [{ role: 'user', content: prompt }],
+    tools: [
+      {
+        type: 'x_search',
+        enable_image_understanding: true
+      }
+    ]
+  });
+  return normalizeGrokResult(parseJsonFromText(extractResponsesText(response)));
 }
 
 async function verifyCandidateCasWithGrok({ handle, project, result, baseUrl }) {
@@ -367,6 +457,10 @@ Rules:
   if (shouldVerifyCandidateCas(result)) {
     const verification = await verifyCandidateCasWithGrok({ handle, project, result, baseUrl });
     result = mergeVerifiedCas(result, verification);
+  }
+  if (shouldSearchAssociatedCas(result)) {
+    const associated = await searchAssociatedCasWithGrok({ handle, project, result, baseUrl });
+    result = mergeVerifiedCas(result, associated);
   }
   return {
     ...result,

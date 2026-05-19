@@ -377,9 +377,9 @@ function normalizeFinalProject(finalProject, sourceProject) {
       inferProjectIntro(sourceProject, grok),
     token_status: textValue(finalProject?.token_status || grok.token_status) || '信息冲突，需人工确认',
     ca: textValue(finalProject?.ca || primaryCaFrom(grok)),
-    confirmed_cas: normalizeAddressList(finalProject?.confirmed_cas || grok.confirmed_cas),
-    candidate_cas: normalizeAddressList(finalProject?.candidate_cas || grok.candidate_cas),
-    wallet_addresses: normalizeAddressList(finalProject?.wallet_addresses || grok.wallet_addresses),
+    confirmed_cas: firstNonEmptyAddressList(finalProject?.confirmed_cas, grok.confirmed_cas),
+    candidate_cas: firstNonEmptyAddressList(finalProject?.candidate_cas, grok.candidate_cas),
+    wallet_addresses: firstNonEmptyAddressList(finalProject?.wallet_addresses, grok.wallet_addresses),
     ca_confidence: textValue(finalProject?.ca_confidence || grok.ca_confidence) || '无',
     tge_status: textValue(finalProject?.tge_status || grok.tge_status) || '暂无可靠信息',
     tge_time: textValue(finalProject?.tge_time || grok.tge_time),
@@ -405,6 +405,14 @@ function normalizeAddressList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === 'string') return value.trim() ? [{ address: value.trim() }] : [];
   return [value];
+}
+
+function firstNonEmptyAddressList(...values) {
+  for (const value of values) {
+    const list = normalizeAddressList(value);
+    if (list.length) return list;
+  }
+  return [];
 }
 
 function primaryCaFrom(value) {

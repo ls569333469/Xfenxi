@@ -113,8 +113,9 @@ function hydrateProject(row) {
       final?.summary ||
       row.summary ||
       '',
-    candidate_cas: normalizeAddressList(final?.candidate_cas || grok?.candidate_cas),
-    wallet_addresses: normalizeAddressList(final?.wallet_addresses || grok?.wallet_addresses)
+    confirmed_cas: firstNonEmptyAddressList(final?.confirmed_cas, grok?.confirmed_cas),
+    candidate_cas: firstNonEmptyAddressList(final?.candidate_cas, grok?.candidate_cas),
+    wallet_addresses: firstNonEmptyAddressList(final?.wallet_addresses, grok?.wallet_addresses)
   };
 }
 
@@ -245,8 +246,9 @@ export function listProjects({ limit = 500 } = {}) {
         final?.summary ||
         row.summary ||
         '',
-      candidate_cas: normalizeAddressList(final?.candidate_cas || grok?.candidate_cas),
-      wallet_addresses: normalizeAddressList(final?.wallet_addresses || grok?.wallet_addresses)
+      confirmed_cas: firstNonEmptyAddressList(final?.confirmed_cas, grok?.confirmed_cas),
+      candidate_cas: firstNonEmptyAddressList(final?.candidate_cas, grok?.candidate_cas),
+      wallet_addresses: firstNonEmptyAddressList(final?.wallet_addresses, grok?.wallet_addresses)
     };
   });
   return uniqueLatestProjects(rows, { max: 200 });
@@ -286,6 +288,14 @@ function normalizeAddressList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === 'string') return value.trim() ? [{ address: value.trim() }] : [];
   return [value];
+}
+
+function firstNonEmptyAddressList(...values) {
+  for (const value of values) {
+    const list = normalizeAddressList(value);
+    if (list.length) return list;
+  }
+  return [];
 }
 
 function uniqueLatestProjects(projects, { max = Infinity } = {}) {
@@ -476,8 +486,9 @@ function latestProjectsForStats() {
         final?.summary ||
         row.summary ||
         '',
-      candidate_cas: normalizeAddressList(final?.candidate_cas || grok?.candidate_cas),
-      wallet_addresses: normalizeAddressList(final?.wallet_addresses || grok?.wallet_addresses)
+      confirmed_cas: firstNonEmptyAddressList(final?.confirmed_cas, grok?.confirmed_cas),
+      candidate_cas: firstNonEmptyAddressList(final?.candidate_cas, grok?.candidate_cas),
+      wallet_addresses: firstNonEmptyAddressList(final?.wallet_addresses, grok?.wallet_addresses)
     };
   });
   return uniqueLatestProjects(rows);
